@@ -32,10 +32,21 @@ cd PPA-1_MetroDriver
 make
 ```
 
-This produces **`out/main.bin`**, a 2 MiB PPA-1 EEPROM image, and
-`out/asm/ppa-1_asm` (the bundled assembler). You do **not** need a separate
-copy of the emulator source to compile the game. The standalone
-`out/tools/ppa_rompack` is also built automatically.
+The build now has exactly three stages:
+
+```text
+main.asm
+   |  ppa-1_asm --program
+   v
+out/main.prg                (64 KiB program, ROM bank 0000)
+   |  ppa_rompack + optional assets/*.bmp / binary files
+   v
+out/main.bin                (complete 2 MiB / 32-bank EEPROM image)
+```
+
+ROMPACK is **always the final step**, including when no BMP is present.
+The standalone assembler and ROMPACK executables are built automatically.
+You do **not** need a separate copy of the emulator source.
 
 ### GIMP BMP resources in EEPROM
 
@@ -54,15 +65,15 @@ moving controls continue to be animated by ASM; the static cab background
 comes from the BMP. Without the BMP the game falls back to its original
 procedural Ečs panel.
 
-`out/main.code.bin` is the **unmodified** assembler EEPROM output;
-`out/main.bin` is the ready-to-run packed image (or a direct copy when no
-BMP is present).
+`out/main.prg` is the **64 KiB program file** from the assembler;
+`out/main.bin` is the **final EEPROM image** built by ROMPACK, including when
+no BMP is present. Do not load the `.prg` directly as a 2 MiB EEPROM image.
 
 The **C** packer also handles other files at explicit ROM addresses:
 
 ```sh
 make rompack
-out/tools/ppa_rompack out/main.code.bin out/resources.bin \
+out/tools/ppa_rompack out/main.prg out/resources.bin \
     --bmp 0001:assets/cab_ecs.bmp \
     --put 0002:0100:path/to/anyfile.dat --info
 ```
@@ -71,7 +82,7 @@ See [the bitmap instructions](assets/README.md) for layout and palette
 details. BANK and OFFSET are hexadecimal; bank 0000 contains program
 instructions and is intentionally protected.
 
-Additional targets: `make asm`, `make symbols`, `make clean`.
+Additional targets: `make asm`, `make rompack`, `make symbols`, `make test-rompack`, `make clean`.
 
 ## Running
 
