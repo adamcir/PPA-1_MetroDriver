@@ -9,7 +9,7 @@ ROMPACK_SOURCE := tools/rompack/ppa_rompack.c
 ROMPACK_BIN := out/tools/ppa_rompack
 ROM_PROGRAM := out/main.prg
 ROM_IMAGE := out/main.bin
-CAB_BMP := assets/cab_ecs.bmp
+CAB_BMP := $(firstword $(wildcard assets/cab_ezh3.bmp) $(wildcard assets/cab_ecs.bmp))
 INCLUDES := $(wildcard includes/*.inc)
 
 .PHONY: all asm rompack symbols clean FORCE
@@ -33,7 +33,7 @@ $(ROM_PROGRAM): main.asm $(INCLUDES) $(ASM_BIN)
 # FORCE also notices when the optional BMP has been added or removed.
 $(ROM_IMAGE): $(ROM_PROGRAM) $(ROMPACK_BIN) FORCE
 	mkdir -p $(dir $@)
-	@if [ -f "$(CAB_BMP)" ]; then \
+	@if [ -n "$(CAB_BMP)" ]; then \
 	  $(ROMPACK_BIN) $(ROM_PROGRAM) $@ --bmp 0001:$(CAB_BMP); \
 	else \
 	  $(ROMPACK_BIN) $(ROM_PROGRAM) $@; \
