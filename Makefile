@@ -50,3 +50,7 @@ clean:
 	rm -rf out
 
 FORCE:
+
+.PHONY: test-rompack
+test-rompack: $(ROMPACK_BIN)
+	python3 tools/rompack/test_rompack.py $(ROMPACK_BIN)
