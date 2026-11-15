@@ -21,11 +21,24 @@ jobs:
           assert len(program)==65536
           assert len(rom)==2*1024*1024
           assert rom[:65536]==program
-          assert set(rom[65536:])=={255}
-          print("ASM -> program.prg -> ROMPACK -> final ROM: OK")
+          assert rom[65536:65540]==b"PIMG"
+          print("ASM -> program.prg -> ROMPACK -> ROM with uploaded Ezh3 BMP: OK")
           PY
       - name: Test BMP and raw-ROM packing
         run: make test-rompack
+      - name: Build without optional BMP
+        run: |
+          mv assets/cab_ezh3.bmp /tmp/ci-cab-ezh3.bmp
+          make
+          python3 - <<'PY'
+          from pathlib import Path
+          program=Path("out/main.prg").read_bytes()
+          rom=Path("out/main.bin").read_bytes()
+          assert len(rom)==2*1024*1024
+          assert rom[:65536]==program
+          assert set(rom[65536:])=={255}
+          print("No assets: ROMPACK generated a clean final ROM")
+          PY
       - name: Build with test BMP
         run: |
           python3 - <<'PY'
