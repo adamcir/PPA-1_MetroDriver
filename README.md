@@ -9,11 +9,15 @@ Copyright (c) 2026 Adam Cír (Adava), Adava Software, Adava Development.
 ## Project files
 
 ```text
-main.asm                    Game entry point, physics, ARS, renderer and sound
+main.asm                    Complete ASM game + PIMG loader integration
 includes/ppa-vga.inc        PPA-VGA/1 interface (slot 1)
 includes/ppa-ps2.inc        PPA-PS/2/1 interface (slot 2)
+includes/ppa-gfx.inc        Shared ASM PIMG blitter and VGA DAC palette loader
+includes/ppa-game.inc       Game helpers (keyboard, delay, random)
 tools/asm/ppa-1_asm.c       Local PPA-1 assembler source
-Makefile                    Standalone build instructions
+tools/rompack/ppa_rompack.c C ROM packer (GIMP BMP + arbitrary files)
+assets/README.md            Bitmap export instructions
+Makefile                    Builds the game and packs optional ROM assets
 ```
 
 The sound-card interface (slot 3) is defined in `main.asm`.
@@ -30,7 +34,42 @@ make
 
 This produces **`out/main.bin`**, a 2 MiB PPA-1 EEPROM image, and
 `out/asm/ppa-1_asm` (the bundled assembler). You do **not** need a separate
-copy of the emulator source to compile the game.
+copy of the emulator source to compile the game. The standalone
+`out/tools/ppa_rompack` is also built automatically.
+
+### GIMP BMP resources in EEPROM
+
+To use a detailed VGA background for the Ečs cab, export a **320×200**
+**uncompressed BMP** from GIMP (indexed 8-bit or RGB 24/32-bit). Save it as:
+
+```text
+assets/cab_ecs.bmp
+```
+
+Now run `make` again. The build converts the BMP into a **PIMG** image in
+EEPROM **bank 0001**. On boot the ASM graphics library
+(`includes/ppa-gfx.inc`) loads the palette and transfers 64,000 pixels
+to VGA VRAM (slot 1, bank 2001). The tunnel/rails, ARS, speedometer and
+moving controls continue to be animated by ASM; the static cab background
+comes from the BMP. Without the BMP the game falls back to its original
+procedural Ečs panel.
+
+`out/main.code.bin` is the **unmodified** assembler EEPROM output;
+`out/main.bin` is the ready-to-run packed image (or a direct copy when no
+BMP is present).
+
+The **C** packer also handles other files at explicit ROM addresses:
+
+```sh
+make rompack
+out/tools/ppa_rompack out/main.code.bin out/resources.bin \
+    --bmp 0001:assets/cab_ecs.bmp \
+    --put 0002:0100:path/to/anyfile.dat --info
+```
+
+See [the bitmap instructions](assets/README.md) for layout and palette
+details. BANK and OFFSET are hexadecimal; bank 0000 contains program
+instructions and is intentionally protected.
 
 Additional targets: `make asm`, `make symbols`, `make clean`.
 
