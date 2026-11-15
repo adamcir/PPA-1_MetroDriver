@@ -2521,25 +2521,19 @@ draw_motion:
 ; This is a *game scene*, not a 3D rail-texture projector.
 ; ---------------------------------------------------------------------------
 draw_ezh3_window:
-    ; Left side window: cover gm_construct with dark tunnel
-    MOV Y-HI,#05
+    ; Left side glass: cover GMod sky, platform and building
+    MOV Y-HI,#00
     MOV Y-LO,#00
     MOV A,#00
-    MOV B,#30
-    MOV C,#33
+    MOV B,#3A
+    MOV C,#46
     CALL fill_rect
-    MOV Y-HI,#44
-    MOV Y-LO,#C0
-    MOV A,#08
-    MOV B,#2A
-    MOV C,#0A
-    CALL fill_rect
-    ; Right side window
-    MOV Y-HI,#16
-    MOV Y-LO,#54
+    ; Right side glass: replace outside with a shadowed tunnel
+    MOV Y-HI,#10
+    MOV Y-LO,#13
     MOV A,#00
-    MOV B,#2C
-    MOV C,#48
+    MOV B,#2D
+    MOV C,#5B
     CALL fill_rect
     ; Main windshield opening - no gm_construct pixels remain inside
     MOV Y-HI,#00
