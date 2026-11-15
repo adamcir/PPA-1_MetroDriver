@@ -105,6 +105,8 @@ start:
     ; Draw the static panel only when no packed bitmap exists.
     CALL draw_panel_static
     CALL update_scene
+    ; Force the very first window/track render even when speed = 0.
+    CALL draw_motion
     CALL draw_panel_dynamic
 
 main_loop:
@@ -386,6 +388,12 @@ update_scene:
     ST $0006,A
     MOV A,#FF
     ST $000E,A
+
+    ; PIMG Ezh3 photos must keep their cab framework. The classic
+    ; full-width Ecs scene renderer would erase that framework.
+    LD A,$0019
+    CMP A,#01
+    JZ .done
 
     CMP B,#00
     JZ .draw_depo
@@ -728,8 +736,9 @@ draw_text:
     RET
 
 draw_panel_static:
-    ; A user-provided assets/cab_ecs.bmp, if present in ROM bank 0001,
-    ; supplies the detailed Ecs panel. Motion/ARS overlays remain in ASM.
+    ; The user-provided assets/cab_ezh3.bmp (or legacy cab_ecs.bmp) in
+    ; ROM bank 0001 supplies the complete cabin snapshot.
+    ; For this photo, the dynamic tunnel and track are confined to windows.
     MOV BR-HI,#10
     MOV BR-LO,#00
     LD A,$0019
@@ -2467,6 +2476,15 @@ draw_motion:
     JZ .done
     ST $000E,A
 
+    ; In photographed Ezh3 mode, render INSIDE the cab windshield
+    ; rather than drawing the old 320x120 view over the entire BMP.
+    LD A,$0019
+    CMP A,#01
+    JNZ .procedural
+    CALL draw_ezh3_window
+    JMP .done
+.procedural:
+
     ; Erase the old rail-side signal, sleepers and wall ribs.
     MOV Y-HI,#24
     MOV Y-LO,#EE
@@ -2494,6 +2512,308 @@ draw_motion:
     CALL moving_rails
     CALL moving_signal
 .done:
+    RET
+
+; ---------------------------------------------------------------------------
+; Ezh3 photographic cab: 320x200 PIMG in ROM bank 0001.
+; Draw only through the cab windows. The screenshot frame and panel survive.
+; Viewport geometry matched to the user's GMod 320x200 screenshot.
+; This is a *game scene*, not a 3D rail-texture projector.
+; ---------------------------------------------------------------------------
+draw_ezh3_window:
+    ; Left side window: cover gm_construct with dark tunnel
+    MOV Y-HI,#05
+    MOV Y-LO,#00
+    MOV A,#00
+    MOV B,#30
+    MOV C,#33
+    CALL fill_rect
+    MOV Y-HI,#44
+    MOV Y-LO,#C0
+    MOV A,#08
+    MOV B,#2A
+    MOV C,#0A
+    CALL fill_rect
+    ; Right side window
+    MOV Y-HI,#16
+    MOV Y-LO,#54
+    MOV A,#00
+    MOV B,#2C
+    MOV C,#48
+    CALL fill_rect
+    ; Main windshield opening - no gm_construct pixels remain inside
+    MOV Y-HI,#00
+    MOV Y-LO,#70
+    MOV A,#00
+    MOV B,#60
+    MOV C,#6A
+    CALL fill_rect
+    ; Tunnel ceiling
+    MOV Y-HI,#00
+    MOV Y-LO,#70
+    MOV A,#08
+    MOV B,#60
+    MOV C,#20
+    CALL fill_rect
+    ; Faint far concrete surface
+    MOV Y-HI,#27
+    MOV Y-LO,#38
+    MOV A,#08
+    MOV B,#50
+    MOV C,#12
+    CALL fill_rect
+    ; Distant tunnel entrance
+    MOV Y-HI,#35
+    MOV Y-LO,#0A
+    MOV A,#00
+    MOV B,#2C
+    MOV C,#1E
+    CALL fill_rect
+    ; Left tunnel wall
+    MOV Y-HI,#3C
+    MOV Y-LO,#70
+    MOV A,#08
+    MOV B,#0C
+    MOV C,#3A
+    CALL fill_rect
+    ; Right tunnel wall
+    MOV Y-HI,#3C
+    MOV Y-LO,#C3
+    MOV A,#08
+    MOV B,#0D
+    MOV C,#3A
+    CALL fill_rect
+    ; Track bed
+    MOV Y-HI,#4D
+    MOV Y-LO,#FD
+    MOV A,#08
+    MOV B,#46
+    MOV C,#2C
+    CALL fill_rect
+    ; Vanishing-point opening
+    MOV Y-HI,#2E
+    MOV Y-LO,#DC
+    MOV A,#00
+    MOV B,#08
+    MOV C,#0D
+    CALL fill_rect
+    ; Left wall seam
+    MOV Y-HI,#1E
+    MOV Y-LO,#79
+    MOV A,#07
+    MOV B,#03
+    MOV C,#4A
+    CALL fill_rect
+    ; Right wall seam
+    MOV Y-HI,#1E
+    MOV Y-LO,#C2
+    MOV A,#07
+    MOV B,#03
+    MOV C,#4A
+    CALL fill_rect
+    ; Dark ballast between near rails
+    MOV Y-HI,#55
+    MOV Y-LO,#8D
+    MOV A,#00
+    MOV B,#26
+    MOV C,#26
+    CALL fill_rect
+    ; Highlight station platform only when passing a station.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0006
+    CMP A,#01
+    JZ .no_platform
+    ; Light station platform on the left
+    MOV Y-HI,#4C
+    MOV Y-LO,#B1
+    MOV A,#07
+    MOV B,#09
+    MOV C,#2D
+    CALL fill_rect
+    ; Warning strip
+    MOV Y-HI,#4C
+    MOV Y-LO,#B1
+    MOV A,#0E
+    MOV B,#09
+    MOV C,#02
+    CALL fill_rect
+.no_platform:
+    ; Sleepers move with real route position (frame phase 0..3).
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$000F
+    CMP A,#00
+    JZ .phase0
+    CMP A,#01
+    JZ .phase1
+    CMP A,#02
+    JZ .phase2
+    JMP .phase3
+.phase0:
+    ; Animated sleeper positions
+    MOV Y-HI,#46
+    MOV Y-LO,#96
+    MOV A,#06
+    MOV B,#14
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#5E
+    MOV Y-LO,#4B
+    MOV A,#06
+    MOV B,#2A
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#75
+    MOV Y-LO,#FE
+    MOV A,#06
+    MOV B,#44
+    MOV C,#03
+    CALL fill_rect
+    JMP .rails
+.phase1:
+    ; Animated sleeper positions
+    MOV Y-HI,#4B
+    MOV Y-LO,#95
+    MOV A,#06
+    MOV B,#16
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#63
+    MOV Y-LO,#4A
+    MOV A,#06
+    MOV B,#2C
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#7C
+    MOV Y-LO,#3C
+    MOV A,#06
+    MOV B,#48
+    MOV C,#03
+    CALL fill_rect
+    JMP .rails
+.phase2:
+    ; Animated sleeper positions
+    MOV Y-HI,#50
+    MOV Y-LO,#96
+    MOV A,#06
+    MOV B,#14
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#68
+    MOV Y-LO,#4A
+    MOV A,#06
+    MOV B,#2C
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#81
+    MOV Y-LO,#3F
+    MOV A,#06
+    MOV B,#42
+    MOV C,#03
+    CALL fill_rect
+    JMP .rails
+.phase3:
+    ; Animated sleeper positions
+    MOV Y-HI,#41
+    MOV Y-LO,#96
+    MOV A,#06
+    MOV B,#14
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#58
+    MOV Y-LO,#0C
+    MOV A,#06
+    MOV B,#28
+    MOV C,#02
+    CALL fill_rect
+    MOV Y-HI,#6F
+    MOV Y-LO,#C1
+    MOV A,#06
+    MOV B,#3E
+    MOV C,#03
+    CALL fill_rect
+    JMP .rails
+.rails:
+    ; The rail edges widen from the vanishing point towards the cab.
+    ; Perspective rails
+    MOV Y-HI,#3B
+    MOV Y-LO,#5C
+    MOV A,#0F
+    MOV B,#02
+    MOV C,#0D
+    CALL fill_rect
+    MOV Y-HI,#3B
+    MOV Y-LO,#63
+    MOV A,#0F
+    MOV B,#02
+    MOV C,#0D
+    CALL fill_rect
+    MOV Y-HI,#4B
+    MOV Y-LO,#97
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0D
+    CALL fill_rect
+    MOV Y-HI,#4B
+    MOV Y-LO,#A8
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0D
+    CALL fill_rect
+    MOV Y-HI,#5B
+    MOV Y-LO,#D1
+    MOV A,#0F
+    MOV B,#03
+    MOV C,#0E
+    CALL fill_rect
+    MOV Y-HI,#5B
+    MOV Y-LO,#EE
+    MOV A,#0F
+    MOV B,#03
+    MOV C,#0E
+    CALL fill_rect
+    MOV Y-HI,#6D
+    MOV Y-LO,#48
+    MOV A,#07
+    MOV B,#03
+    MOV C,#13
+    CALL fill_rect
+    MOV Y-HI,#6D
+    MOV Y-LO,#75
+    MOV A,#07
+    MOV B,#03
+    MOV C,#13
+    CALL fill_rect
+    ; A simple trackside ARS signal on the tunnel's right side.
+    MOV Y-HI,#32
+    MOV Y-LO,#BA
+    MOV A,#08
+    MOV B,#07
+    MOV C,#0C
+    CALL fill_rect
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$000C
+    CMP A,#00
+    JZ .red
+    CMP A,#40
+    JC .red
+    CMP A,#60
+    JC .yellow
+    MOV A,#0A
+    JMP .lamp
+.yellow:
+    MOV A,#0E
+    JMP .lamp
+.red:
+    MOV A,#0C
+.lamp:
+    MOV Y-HI,#36
+    MOV Y-LO,#7C
+    MOV B,#03
+    MOV C,#05
+    CALL fill_rect
     RET
 
 moving_walls:
