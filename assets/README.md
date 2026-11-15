@@ -16,8 +16,9 @@ palette (the first 16 colors retain EGA colors, and 16–255 use an RGB
 
 The first image can occupy at most 65024 bytes in its bank:
 1024 bytes of header/palette/padding + 320 × 200 pixels.
-The normal PPA-1 assembler output is kept separately at
-`out/main.code.bin`. ROM packer outputs `out/main.bin`.
+The assembler creates `out/main.prg` (64 KiB program bank), then
+ROMPACK combines it with optional assets and writes the complete
+`out/main.bin` (2 MiB EEPROM image). ROMPACK always runs, even without BMP.
 
 No bitmap file is required: without `cab_ecs.bmp` the program still
 renders the original gray Ečs-style panel in PPA-1 ASM.
@@ -26,7 +27,7 @@ For additional resources or arbitrary binary blobs, use:
 
 ```sh
 make rompack
-out/tools/ppa_rompack out/main.code.bin out/resources.bin \
+out/tools/ppa_rompack out/main.prg out/resources.bin \
   --bmp 0001:assets/cab_ecs.bmp \
   --put 0002:0100:/path/to/custom.dat --info
 ```
