@@ -12,6 +12,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build ASM game and C ROM packer
         run: make
+      - name: Verify intermediate program and final ROM
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          program=Path("out/main.prg").read_bytes()
+          rom=Path("out/main.bin").read_bytes()
+          assert len(program)==65536
+          assert len(rom)==2*1024*1024
+          assert rom[:65536]==program
+          assert set(rom[65536:])=={255}
+          print("ASM -> program.prg -> ROMPACK -> final ROM: OK")
+          PY
       - name: Test BMP and raw-ROM packing
         run: make test-rompack
       - name: Build with test BMP
@@ -36,6 +48,7 @@ jobs:
           from pathlib import Path
           d=Path("out/main.bin").read_bytes()
           assert len(d)==2*1024*1024
+          assert d[:65536]==Path("out/main.prg").read_bytes()
           assert d[65536:65540]==b"PIMG"
           print("Bitmap resource was packed into bank 0001")
           PY
