@@ -7,7 +7,7 @@ ASM_SOURCE := tools/asm/ppa-1_asm.c
 ASM_BIN := out/asm/ppa-1_asm
 ROMPACK_SOURCE := tools/rompack/ppa_rompack.c
 ROMPACK_BIN := out/tools/ppa_rompack
-ROM_CODE := out/main.code.bin
+ROM_PROGRAM := out/main.prg
 ROM_IMAGE := out/main.bin
 CAB_BMP := assets/cab_ecs.bmp
 INCLUDES := $(wildcard includes/*.inc)
@@ -23,19 +23,20 @@ $(ROMPACK_BIN): $(ROMPACK_SOURCE)
 	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -Wall -Wextra $< -o $@
 
-$(ROM_CODE): main.asm $(INCLUDES) $(ASM_BIN)
+# Stage 1: PPA-1 ASM -> single 64 KiB executable bank (not an EEPROM yet).
+$(ROM_PROGRAM): main.asm $(INCLUDES) $(ASM_BIN)
 	mkdir -p $(dir $@)
-	$(ASM_BIN) main.asm $@
+	$(ASM_BIN) main.asm $@ --program
 
-# Repack every call to 'make', including when the optional BMP is removed.
-# Never pack into main.code.bin: keep the assembler output clean.
-$(ROM_IMAGE): $(ROM_CODE) $(ROMPACK_BIN) FORCE
+# Stage 2: program + optional GIMP BMP -> complete 2 MiB EEPROM image.
+# Run ROMPACK even without assets; it is the ONLY producer of the final .bin.
+# FORCE also notices when the optional BMP has been added or removed.
+$(ROM_IMAGE): $(ROM_PROGRAM) $(ROMPACK_BIN) FORCE
 	mkdir -p $(dir $@)
 	@if [ -f "$(CAB_BMP)" ]; then \
-	  $(ROMPACK_BIN) $(ROM_CODE) $@ --bmp 0001:$(CAB_BMP); \
+	  $(ROMPACK_BIN) $(ROM_PROGRAM) $@ --bmp 0001:$(CAB_BMP); \
 	else \
-	  cp $(ROM_CODE) $@; \
-	  echo "No $(CAB_BMP): built procedural ASM graphics (no BMP needed)."; \
+	  $(ROMPACK_BIN) $(ROM_PROGRAM) $@; \
 	fi
 
 asm: $(ASM_BIN)
@@ -43,7 +44,7 @@ rompack: $(ROMPACK_BIN)
 
 symbols: $(ASM_BIN) main.asm $(INCLUDES)
 	mkdir -p out
-	$(ASM_BIN) main.asm $(ROM_CODE) --symbols
+	$(ASM_BIN) main.asm $(ROM_PROGRAM) --program --symbols
 	$(MAKE) $(ROM_IMAGE)
 
 clean:
