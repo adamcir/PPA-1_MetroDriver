@@ -1,6 +1,6 @@
 # PPA-1 MetroDriver
 
-A metro-driving game written entirely in **PPA-1 assembly**. Current cab: **Ečs**.
+A metro-driving game written entirely in **PPA-1 assembly**. The default procedural cab is **Ečs-inspired**; with a packed BMP the game uses the photographed **Ež3** cab.
 The game runs on the emulated PPA-1 processor; VGA graphics, HUD, track,
 keyboard, signals, and sound are produced by PPA-1 instructions.
 
@@ -50,20 +50,34 @@ You do **not** need a separate copy of the emulator source.
 
 ### GIMP BMP resources in EEPROM
 
-To use a detailed VGA background for the Ečs cab, export a **320×200**
+To use the photographed Ež3 cab, export a **320×200**
 **uncompressed BMP** from GIMP (indexed 8-bit or RGB 24/32-bit). Save it as:
 
 ```text
-assets/cab_ecs.bmp
+assets/cab_ezh3.bmp
 ```
 
-Now run `make` again. The build converts the BMP into a **PIMG** image in
+Now run `make` again. The build prefers `cab_ezh3.bmp` and still accepts the
+legacy `cab_ecs.bmp` as a fallback. It converts the BMP into a **PIMG** image in
 EEPROM **bank 0001**. On boot the ASM graphics library
 (`includes/ppa-gfx.inc`) loads the palette and transfers 64,000 pixels
-to VGA VRAM (slot 1, bank 2001). The tunnel/rails, ARS, speedometer and
-moving controls continue to be animated by ASM; the static cab background
-comes from the BMP. Without the BMP the game falls back to its original
-procedural Ečs panel.
+to VGA VRAM (slot 1, bank 2001). The static photographed cab stays visible.
+The game redraws **only the windshield openings**, replacing the original
+GMod `gm_construct` view with ASM tunnel walls, moving sleepers, perspective
+rails, station platforms and a signal. The speedometer, ARS and moving
+controls still update in ASM. The viewport is deliberately limited so it
+does not erase the cab's windows frames or control desk.
+
+The first windshield renderer is aligned with the uploaded **320×200 Ež3
+screenshot** (front x=112..207/y=0..105, left x=0..57/y=0..69, right
+x=275..319/y=12..102). If the screenshot is recropped, those rectangle
+coordinates in `main.asm:draw_ezh3_window` may need adjustment.
+
+**Currently** the moving rails are simple VGA primitives created by the
+PPA-1 CPU; `railroad_001.png` from the original 3D model is a UV texture
+atlas, not a perspective-ready 2D rail sprite, and is **not yet** rendered
+as a texture. Without a valid packed cab BMP, the game still falls back
+to its original procedural Ečs panel.
 
 `out/main.prg` is the **64 KiB program file** from the assembler;
 `out/main.bin` is the **final EEPROM image** built by ROMPACK, including when
