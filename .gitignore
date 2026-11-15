@@ -1,0 +1,7 @@
+# Generated PPA-1 ROM and assembler binary
+/out/
+
+# Editor caches
+*~
+*.swp
+*.swo
