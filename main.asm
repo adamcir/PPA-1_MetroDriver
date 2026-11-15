@@ -21,6 +21,8 @@
 
 .include "includes/ppa-vga.inc"
 .include "includes/ppa-ps2.inc"
+.include "includes/ppa-gfx.inc"
+.include "includes/ppa-game.inc"
 
 ; PPA-SOUND/1 registers in SLOT 3 / bank 4000.
 SND_ON          EQU $0010
@@ -52,6 +54,7 @@ VAR_LIMIT        EQU $000C
 VAR_WARNING      EQU $000D
 VAR_LAST_PHASE   EQU $000E
 VAR_SHIFT_PHASE  EQU $000F
+VAR_CAB_BITMAP   EQU $0019  ; 1 if PIMG bitmap from ROM bank 0001 is installed
 
 start:
     ; VGA: 320x200x8 mode 13h.
@@ -83,16 +86,23 @@ start:
     ST $0006,A
     ST $000E,A
 
-    ; PS/2 keyboard in SLOT 2: scan on + flush FIFO.
-    MOV BR-HI,#30
-    MOV BR-LO,#00
-    MOV A,#81
-    ST $0012,A
+    ; Keyboard helper library (PS/2 set-2, slot 2).
+    CALL game_keyboard_init
 
     ; Sound card in SLOT 3. Triangle traction motor on channel 1.
     CALL sound_init_slot3
 
-    ; Draw the Ecs-style light-gray control desk once.
+    ; Optional full-screen cab BMP from ROM bank 0001 (PIMG).
+    ; gfx_show_screen reads the packed resource, uploads its palette and
+    ; transfers 64000 pixels to VGA slot-1 VRAM. On missing/bad PIMG
+    ; A=0; the original procedural ASM control desk remains available.
+    MOV A,#01
+    CALL gfx_show_screen
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0019,A
+
+    ; Draw the static panel only when no packed bitmap exists.
     CALL draw_panel_static
     CALL update_scene
     CALL draw_panel_dynamic
@@ -106,7 +116,8 @@ main_loop:
     CALL draw_motion
     CALL draw_panel_dynamic
     CALL update_sound
-    CALL frame_delay
+    MOV D,#02
+    CALL game_delay
     JMP main_loop
 
 ; ---------------------------------------------------------------------------
@@ -717,6 +728,13 @@ draw_text:
     RET
 
 draw_panel_static:
+    ; A user-provided assets/cab_ecs.bmp, if present in ROM bank 0001,
+    ; supplies the detailed Ecs panel. Motion/ARS overlays remain in ASM.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0019
+    CMP A,#01
+    JZ .already_drawn
     MOV A,#07
     CALL fill_panel
     ; Ecs: pale steel, two-tier console, wood trim and panel edges.
@@ -1491,6 +1509,8 @@ draw_panel_static:
     MOV B,#02
     MOV C,#02
     CALL fill_rect
+    RET
+.already_drawn:
     RET
 
 draw_panel_dynamic:
