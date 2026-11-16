@@ -68,10 +68,21 @@ keys, respectively. ASM draws **track -> cabin (ROM 0001) -> panel (ROM 0002)**
 using the transparent PIMG blitter. The window shapes now follow the BMP
 mask rather than hardcoded rectangular viewports.
 
+**Incremental VGA rendering:** The cab and metal panel are composed once
+when the game starts (and when the route changes station). During normal
+movement, `draw_motion` no longer repeats both 64,000-pixel ROM blits.
+Instead, `draw_dirty_track` changes a small 66×48 region and uses the
+two color-key masks to avoid altering the window frames or panel. The
+GRKV restores only its former 13×20 sprite and 26×9 label from the
+original panel texture; it is redrawn only when its actual notch changes.
+The initial scene composition is still a full draw; this avoids the
+repeated progressive whole-screen refresh observed during driving.
+
 The old photographic Ež3 window mode is retained for ROMs with no separate
-panel; no-image setups fall back to the procedural Ečs cockpit. The old
-white HUD is suppressed for the new layered Ež3 artwork; animated needles
-and controller sprites can be added to dedicated layers later.
+panel; no-image setups fall back to the procedural Ečs cockpit. The old white HUD is suppressed in the new layered Ež3 artwork. The
+**GRKV controller handle** is now animated by PPA-1 ASM with seven detents
+(T2/T1A/T1/0/X1/X2/X3), with its own compact sprite and current-notch
+label. Instrument needles can be added separately later.
 
 Track motion still uses native PPA-1 ASM graphics, not the original
 Metrostroi rail model atlas. See [assets/README.md](assets/README.md).
@@ -124,8 +135,10 @@ T2 <-> T1A <-> T1 <-> 0 <-> X1 <-> X2 <-> X3
 
 `X1`–`X3` apply increasing traction, `0` coasts, and `T1`–`T2`
 apply increasing braking. The controller has a delayed physical position,
-speed changes gradually up to 80 km/h. The procedural Ečs HUD is retained,
-while the Ež3 layered mode leaves room for dedicated moving instruments.
+speed changes gradually up to 80 km/h. The Ež3 **GRKV (main controller
+handle)** moves visibly as the delayed physical notch changes. The
+procedural Ečs HUD is retained, while the Ež3 mode leaves room for
+dedicated moving instrument needles.
 
 The game has a moving tunnel, moving sleepers and platform elements, trackside
 signals with perspective changes, and a looping **DEPO → CENTRUM → LUKA**
