@@ -56,6 +56,7 @@ VAR_LAST_PHASE   EQU $000E
 VAR_SHIFT_PHASE  EQU $000F
 VAR_CAB_BITMAP   EQU $0019  ; 0 fallback, 1 legacy photo, 2 layered cab
 VAR_LAYERED_PANEL EQU $001A  ; 1 if separate panel from ROM bank 0002 exists
+VAR_GRKV_DRAWN    EQU $001B  ; last GRKV notch rendered (FF = invalidate)
 
 start:
     ; VGA: 320x200x8 mode 13h.
@@ -86,6 +87,7 @@ start:
     MOV A,#FF
     ST $0006,A
     ST $000E,A
+    ST $001B,A
 
     ; Keyboard helper library (PS/2 set-2, slot 2).
     CALL game_keyboard_init
@@ -1550,6 +1552,7 @@ draw_panel_dynamic:
     LD A,$001A
     CMP A,#01
     JNZ .legacy
+    CALL draw_grkv
     RET
 .legacy:
     ; The analog speed bar covers 0..80 km/h.
@@ -2510,6 +2513,13 @@ draw_motion:
     LD A,$001A
     CMP A,#01
     JNZ .check_photo
+    CMP B,#FF
+    JZ .layer_full
+    ; Normal motion: update only the exposed track pixels, never the cab.
+    CALL draw_dirty_track
+    JMP .done
+.layer_full:
+    ; Full scene composition only at startup and station changes.
     CALL draw_layered_frame
     JMP .done
 
@@ -2552,6 +2562,229 @@ draw_motion:
     RET
 
 ; ---------------------------------------------------------------------------
+; Clipped dirty-rectangle drawing: write VGA ONLY through green #00FF00
+; present in both the cabin (ROM 0001) and panel (ROM 0002).
+; Blue #0000FF is not a track opening. No cab/panel pixel is overwritten.
+; Input: Y = VGA pixel offset, A = color, B = width, C = height.
+; Uses D and RAM 1000:0044-0046 as temporary storage.
+; ---------------------------------------------------------------------------
+masked_fill_rect:
+    MOV D,A
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0044,B
+.row:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0045,Y-HI
+    ST $0046,Y-LO
+    MOV X-HI,Y-HI
+    MOV X-LO,Y-LO
+    ADD X-HI,#04
+    LD B,$0044
+.pixel:
+    MOV BR-HI,#00
+    MOV BR-LO,#01
+    LD A,X
+    CMP A,#FF
+    JNZ .next
+    MOV BR-HI,#00
+    MOV BR-LO,#02
+    LD A,X
+    CMP A,#FF
+    JNZ .next
+    MOV BR-HI,#20
+    MOV BR-LO,#01
+    ST Y,D
+.next:
+    INC X-LO
+    JNZ .src_ok
+    INC X-HI
+.src_ok:
+    INC Y-LO
+    JNZ .vram_ok
+    INC Y-HI
+.vram_ok:
+    DEC B
+    JNZ .pixel
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD Y-HI,$0045
+    LD Y-LO,$0046
+    ADD Y-LO,#40
+    JNC .no_carry
+    INC Y-HI
+.no_carry:
+    INC Y-HI
+    DEC C
+    JNZ .row
+    RET
+
+; Only the track's 66x48 dirty region is updated during movement.
+; Four positions of sleepers advance in proportion to train position.
+; Everything else (walls, windows, wood and buttons) stays unchanged.
+draw_dirty_track:
+    ; Erase old sleepers within the track bed (masked)
+    MOV Y-HI,#64
+    MOV Y-LO,#7F
+    MOV A,#00
+    MOV B,#42
+    MOV C,#30
+    CALL masked_fill_rect
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$000F
+    CMP A,#00
+    JZ .phase0
+    CMP A,#01
+    JZ .phase1
+    CMP A,#02
+    JZ .phase2
+    JMP .phase3
+.phase0:
+    MOV Y-HI,#6F
+    MOV Y-LO,#DA
+    MOV A,#06
+    MOV B,#0C
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#7E
+    MOV Y-LO,#D2
+    MOV A,#06
+    MOV B,#1C
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#8D
+    MOV Y-LO,#C6
+    MOV A,#06
+    MOV B,#34
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#9B
+    MOV Y-LO,#7F
+    MOV A,#06
+    MOV B,#42
+    MOV C,#03
+    CALL masked_fill_rect
+    JMP .rails
+.phase1:
+    MOV Y-HI,#6E
+    MOV Y-LO,#99
+    MOV A,#06
+    MOV B,#0E
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#7D
+    MOV Y-LO,#8F
+    MOV A,#06
+    MOV B,#22
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#8C
+    MOV Y-LO,#84
+    MOV A,#06
+    MOV B,#38
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#9A
+    MOV Y-LO,#3F
+    MOV A,#06
+    MOV B,#42
+    MOV C,#03
+    CALL masked_fill_rect
+    JMP .rails
+.phase2:
+    MOV Y-HI,#6C
+    MOV Y-LO,#17
+    MOV A,#06
+    MOV B,#12
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#7B
+    MOV Y-LO,#0D
+    MOV A,#06
+    MOV B,#26
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#8A
+    MOV Y-LO,#02
+    MOV A,#06
+    MOV B,#3C
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#98
+    MOV Y-LO,#FF
+    MOV A,#06
+    MOV B,#42
+    MOV C,#03
+    CALL masked_fill_rect
+    JMP .rails
+.phase3:
+    MOV Y-HI,#72
+    MOV Y-LO,#5A
+    MOV A,#06
+    MOV B,#0C
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#81
+    MOV Y-LO,#53
+    MOV A,#06
+    MOV B,#1A
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#90
+    MOV Y-LO,#49
+    MOV A,#06
+    MOV B,#30
+    MOV C,#02
+    CALL masked_fill_rect
+    MOV Y-HI,#9C
+    MOV Y-LO,#BF
+    MOV A,#06
+    MOV B,#42
+    MOV C,#02
+    CALL masked_fill_rect
+    JMP .rails
+.rails:
+    MOV Y-HI,#69
+    MOV Y-LO,#9B
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0C
+    CALL masked_fill_rect
+    MOV Y-HI,#69
+    MOV Y-LO,#A3
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0C
+    CALL masked_fill_rect
+    MOV Y-HI,#78
+    MOV Y-LO,#94
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0D
+    CALL masked_fill_rect
+    MOV Y-HI,#78
+    MOV Y-LO,#AA
+    MOV A,#07
+    MOV B,#02
+    MOV C,#0D
+    CALL masked_fill_rect
+    MOV Y-HI,#88
+    MOV Y-LO,#CA
+    MOV A,#07
+    MOV B,#03
+    MOV C,#12
+    CALL masked_fill_rect
+    MOV Y-HI,#88
+    MOV Y-LO,#F3
+    MOV A,#07
+    MOV B,#03
+    MOV C,#12
+    CALL masked_fill_rect
+    RET
+
+; ---------------------------------------------------------------------------
 ; Compositing for Ezh3 graphical layers, with exact color-key masks:
 ; 1. Metro tracks/stations/signal drawn into VGA by PPA-1 ASM.
 ; 2. cab-without-panel PIMG bank 0001 (if present): skip green and blue.
@@ -2580,15 +2813,19 @@ draw_layered_frame:
 .luka:
     CALL draw_station_luka
 .moving:
-    CALL moving_sleepers
-    CALL moving_rails
+    ; Draw static scenery only on startup / when the station changes.
     CALL moving_signal
-    ; Layer cab 0001 is optional until the user supplies cab.bmp.
     MOV A,#01
     CALL gfx_blit_transparent_screen
-    ; The pult always appears in the foreground and covers the blue gap.
     MOV A,#02
     CALL gfx_blit_transparent_screen
+    ; The GRKV must redraw after a whole-station scene change.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    MOV A,#FF
+    ST $001B,A
+    ; The first moving sleeper frame still renders once on startup.
+    CALL draw_dirty_track
     RET
 
 ; ---------------------------------------------------------------------------
