@@ -1619,6 +1619,13 @@ draw_grkv:
     MOV Y-LO,#98
     MOV A,#00
     CALL draw_text
+    ; Small persistent nameplate on the upper metal panel.
+    MOV X-HI,#50
+    MOV X-LO,#TXT_GRKV-5000
+    MOV Y-HI,#95
+    MOV Y-LO,#3B
+    MOV A,#00
+    CALL draw_text
 .done:
     RET
 
@@ -3949,6 +3956,8 @@ TXT_W:
 TXT_S:
     .asciz "S"
 
+TXT_GRKV:
+    .asciz "GRKV"
 TXT_T2:
     .asciz "T2"
 TXT_T1A:
