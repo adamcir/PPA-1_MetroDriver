@@ -1544,6 +1544,216 @@ draw_panel_static:
 .already_drawn:
     RET
 
+; ---------------------------------------------------------------------------
+; Ezh3 GRKV (main driver-controller handle).
+; Independently rendered over the user's pult.bmp. Only 13x20 pixels
+; under the old handle and a 26x9 label are restored from ROM bank 0002.
+; W/S select target notch, VAR_ACTUAL is the physical (delayed) position.
+; The handle itself is deliberately NOT baked into the pult texture.
+; ---------------------------------------------------------------------------
+draw_grkv:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0009
+    LD B,$001B
+    CMP A,B
+    JZ .done
+    ST $0048,A
+    CMP B,#FF
+    JZ .no_previous
+    MOV A,B
+    CALL grkv_xy
+    MOV B,#0D
+    MOV C,#14
+    CALL grkv_restore_rect
+.no_previous:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0048
+    ST $001B,A
+    CALL grkv_xy
+    CALL grkv_paint
+    ; Restore only the notch text, not the entire dashboard.
+    MOV Y-HI,#9A
+    MOV Y-LO,#54
+    MOV B,#1A
+    MOV C,#09
+    CALL grkv_restore_rect
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0048
+    MOV X-HI,#50
+    CMP A,#00
+    JZ .label_t2
+    CMP A,#01
+    JZ .label_t1a
+    CMP A,#02
+    JZ .label_t1
+    CMP A,#03
+    JZ .label_0
+    CMP A,#04
+    JZ .label_x1
+    CMP A,#05
+    JZ .label_x2
+    MOV X-LO,#TXT_X3-5000
+    JMP .label_draw
+.label_t2:
+    MOV X-LO,#TXT_T2-5000
+    JMP .label_draw
+.label_t1a:
+    MOV X-LO,#TXT_T1A-5000
+    JMP .label_draw
+.label_t1:
+    MOV X-LO,#TXT_T1-5000
+    JMP .label_draw
+.label_0:
+    MOV X-LO,#TXT_ZERO-5000
+    JMP .label_draw
+.label_x1:
+    MOV X-LO,#TXT_X1-5000
+    JMP .label_draw
+.label_x2:
+    MOV X-LO,#TXT_X2-5000
+.label_draw:
+    MOV Y-HI,#9B
+    MOV Y-LO,#98
+    MOV A,#00
+    CALL draw_text
+.done:
+    RET
+
+; A = GRKV notch 0..6. Y = top-left of 13x20 drawing.
+grkv_xy:
+    CMP A,#00
+    JZ .pos0
+    CMP A,#01
+    JZ .pos1
+    CMP A,#02
+    JZ .pos2
+    CMP A,#03
+    JZ .pos3
+    CMP A,#04
+    JZ .pos4
+    CMP A,#05
+    JZ .pos5
+    CMP A,#06
+    JZ .pos6
+    JMP .pos3
+.pos0:
+    MOV Y-HI,#DC
+    MOV Y-LO,#5D
+    RET
+.pos1:
+    MOV Y-HI,#D7
+    MOV Y-LO,#61
+    RET
+.pos2:
+    MOV Y-HI,#D2
+    MOV Y-LO,#65
+    RET
+.pos3:
+    MOV Y-HI,#CD
+    MOV Y-LO,#69
+    RET
+.pos4:
+    MOV Y-HI,#C8
+    MOV Y-LO,#6D
+    RET
+.pos5:
+    MOV Y-HI,#C3
+    MOV Y-LO,#71
+    RET
+.pos6:
+    MOV Y-HI,#BE
+    MOV Y-LO,#75
+    RET
+
+; Restore exactly BxC pixels from the immutable panel (PIMG 0002).
+; All these regions are opaque inside the GIMP dashboard.
+grkv_restore_rect:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0044,B
+.row:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0045,Y-HI
+    ST $0046,Y-LO
+    MOV X-HI,Y-HI
+    MOV X-LO,Y-LO
+    ADD X-HI,#04
+    LD B,$0044
+.pixel:
+    MOV BR-HI,#00
+    MOV BR-LO,#02
+    LD A,X
+    CMP A,#FE
+    JZ .skip
+    CMP A,#FF
+    JZ .skip
+    MOV BR-HI,#20
+    MOV BR-LO,#01
+    ST Y,A
+.skip:
+    INC X-LO
+    JNZ .xok
+    INC X-HI
+.xok:
+    INC Y-LO
+    JNZ .yok
+    INC Y-HI
+.yok:
+    DEC B
+    JNZ .pixel
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD Y-HI,$0045
+    LD Y-LO,$0046
+    ADD Y-LO,#40
+    JNC .no_carry
+    INC Y-HI
+.no_carry:
+    INC Y-HI
+    DEC C
+    JNZ .row
+    RET
+
+; A small bakelite grip on a dark metal shaft (position-controlled).
+grkv_paint:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $0049,Y-HI
+    ST $004A,Y-LO
+    ; Black vertical lever (top-left +4 x, +4 y).
+    ADD Y-LO,#05
+    JNC .stem_nocarry
+    INC Y-HI
+.stem_nocarry:
+    ADD Y-HI,#05
+    MOV A,#08
+    MOV B,#04
+    MOV C,#0D
+    CALL fill_rect
+    ; Brown Bakelite hand-grip.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD Y-HI,$0049
+    LD Y-LO,$004A
+    MOV A,#06
+    MOV B,#0C
+    MOV C,#05
+    CALL fill_rect
+    ; Dark upper edge / small highlight.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD Y-HI,$0049
+    LD Y-LO,$004A
+    MOV A,#00
+    MOV B,#0C
+    MOV C,#01
+    CALL fill_rect
+    RET
+
 draw_panel_dynamic:
     ; Never paint the old white Ecs debug-style controls on the new Ezh3
     ; artwork. Animated Ezh3 controls will be separate sprites later.
