@@ -1,6 +1,6 @@
 # PPA-1 MetroDriver
 
-A metro-driving game written entirely in **PPA-1 assembly**. The default procedural cab is **Ečs-inspired**; with a packed BMP the game uses the photographed **Ež3** cab.
+A metro-driving game written entirely in **PPA-1 assembly**. It supports the original Ečs-inspired procedural cockpit and separate Ež3 cabin/dashboard textures.
 The game runs on the emulated PPA-1 processor; VGA graphics, HUD, track,
 keyboard, signals, and sound are produced by PPA-1 instructions.
 
@@ -48,36 +48,33 @@ ROMPACK is **always the final step**, including when no BMP is present.
 The standalone assembler and ROMPACK executables are built automatically.
 You do **not** need a separate copy of the emulator source.
 
-### GIMP BMP resources in EEPROM
+### Ež3 cabin and panel layers
 
-To use the photographed Ež3 cab, export a **320×200**
-**uncompressed BMP** from GIMP (indexed 8-bit or RGB 24/32-bit). Save it as:
+The project includes the user's two 320×200 Ež3 drawings in checksum-
+verified archives. On `make`, these are restored to BMP automatically.
+Direct BMPs from GIMP override the bundled archives:
 
-```text
-assets/cab_ezh3.bmp
-```
+- `assets/cab_ezh3_layer.bmp`: cabin *without* the dashboard.
+- `assets/pult_ezh3.bmp`: the independent dashboard.
 
-Now run `make` again. The build prefers `cab_ezh3.bmp` and still accepts the
-legacy `cab_ecs.bmp` as a fallback. It converts the BMP into a **PIMG** image in
-EEPROM **bank 0001**. On boot the ASM graphics library
-(`includes/ppa-gfx.inc`) loads the palette and transfers 64,000 pixels
-to VGA VRAM (slot 1, bank 2001). The static photographed cab stays visible.
-The game redraws **only the windshield openings**, replacing the original
-GMod `gm_construct` view with ASM tunnel walls, moving sleepers, perspective
-rails, station platforms and a signal. The speedometer, ARS and moving
-controls still update in ASM. The viewport is deliberately limited so it
-does not erase the cab's windows frames or control desk.
+Both must use 320×200 uncompressed BMP (8/24/32-bit). Exact color keys:
 
-The first windshield renderer is aligned with the uploaded **320×200 Ež3
-screenshot** (front x=112..207/y=0..105, left x=0..57/y=0..69, right
-x=275..319/y=12..102). If the screenshot is recropped, those rectangle
-coordinates in `main.asm:draw_ezh3_window` may need adjustment.
+- `#00FF00` (green) — display the live tunnel / rails in this region.
+- `#0000FF` (blue) — reserved space for the independent dashboard.
+- Other colors remain opaque; no alpha channel is needed.
 
-**Currently** the moving rails are simple VGA primitives created by the
-PPA-1 CPU; `railroad_001.png` from the original 3D model is a UV texture
-atlas, not a perspective-ready 2D rail sprite, and is **not yet** rendered
-as a texture. Without a valid packed cab BMP, the game still falls back
-to its original procedural Ečs panel.
+ROMPACK reserves palette indices `FF` and `FE` for the green and blue
+keys, respectively. ASM draws **track -> cabin (ROM 0001) -> panel (ROM 0002)**
+using the transparent PIMG blitter. The window shapes now follow the BMP
+mask rather than hardcoded rectangular viewports.
+
+The old photographic Ež3 window mode is retained for ROMs with no separate
+panel; no-image setups fall back to the procedural Ečs cockpit. The old
+white HUD is suppressed for the new layered Ež3 artwork; animated needles
+and controller sprites can be added to dedicated layers later.
+
+Track motion still uses native PPA-1 ASM graphics, not the original
+Metrostroi rail model atlas. See [assets/README.md](assets/README.md).
 
 `out/main.prg` is the **64 KiB program file** from the assembler;
 `out/main.bin` is the **final EEPROM image** built by ROMPACK, including when
@@ -127,14 +124,14 @@ T2 <-> T1A <-> T1 <-> 0 <-> X1 <-> X2 <-> X3
 
 `X1`–`X3` apply increasing traction, `0` coasts, and `T1`–`T2`
 apply increasing braking. The controller has a delayed physical position,
-speed changes gradually up to 80 km/h, and the speed and controller
-position are shown on the VGA desk.
+speed changes gradually up to 80 km/h. The procedural Ečs HUD is retained,
+while the Ež3 layered mode leaves room for dedicated moving instruments.
 
 The game has a moving tunnel, moving sleepers and platform elements, trackside
 signals with perspective changes, and a looping **DEPO → CENTRUM → LUKA**
 route. Demonstration ARS speed codes are **80/70/60/40/0**, with an
-overspeed indicator and SOUND alert. All rendering uses PPA-1 ASM rather
-than externally generated images.
+overspeed indicator and SOUND alert. Moving scene geometry is drawn in PPA-1 ASM; the static Ež3
+assets are converted to indexed PIMG by ROMPACK.
 
 **Note:** this is a simple game, not a faithful reproduction of Metrostroi's
 electrical, pneumatic, EPK or interlocking systems.
