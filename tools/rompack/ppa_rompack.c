@@ -136,6 +136,10 @@ static void make_palette(uint8_t *dst) {
                 dst[3u * idx + 1] = (uint8_t)(g * 255u / 7u);
                 dst[3u * idx + 2] = (uint8_t)(b * 255u / 4u);
             }
+    /* The two brightest RGB cube entries are reserved for layer masks.
+     * Keep their opaque fallback (253) white: otherwise the white/silver
+     * highlights in the photographed cab become bright yellow. */
+    dst[3u * 253u] = 255; dst[3u * 253u + 1] = 255; dst[3u * 253u + 2] = 255;
     /* Reserve two palette entries for the layer mask keys. */
     dst[3u * 254u] = 0; dst[3u * 254u + 1] = 0; dst[3u * 254u + 2] = 255;
     dst[3u * 255u] = 0; dst[3u * 255u + 1] = 255; dst[3u * 255u + 2] = 0;
