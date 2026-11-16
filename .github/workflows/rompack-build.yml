@@ -36,6 +36,13 @@ jobs:
           print("PPA-1 ROM: code bank 0000, masked cab bank 0001, panel bank 0002: OK")
           PY
 
+      - name: Publish PPA-1 MetroDriver EEPROM image
+        uses: actions/upload-artifact@v4
+        with:
+          name: PPA-1-MetroDriver-Ezh3-ROM
+          path: out/main.bin
+          if-no-files-found: error
+
       - name: Test stand-alone ROM packer
         run: make test-rompack
 
