@@ -54,7 +54,8 @@ VAR_LIMIT        EQU $000C
 VAR_WARNING      EQU $000D
 VAR_LAST_PHASE   EQU $000E
 VAR_SHIFT_PHASE  EQU $000F
-VAR_CAB_BITMAP   EQU $0019  ; 1 if PIMG bitmap from ROM bank 0001 is installed
+VAR_CAB_BITMAP   EQU $0019  ; 0 fallback, 1 legacy photo, 2 layered cab
+VAR_LAYERED_PANEL EQU $001A  ; 1 if separate panel from ROM bank 0002 exists
 
 start:
     ; VGA: 320x200x8 mode 13h.
@@ -92,16 +93,35 @@ start:
     ; Sound card in SLOT 3. Triangle traction motor on channel 1.
     CALL sound_init_slot3
 
-    ; Optional full-screen cab BMP from ROM bank 0001 (PIMG).
-    ; gfx_show_screen reads the packed resource, uploads its palette and
-    ; transfers 64000 pixels to VGA slot-1 VRAM. On missing/bad PIMG
-    ; A=0; the original procedural ASM control desk remains available.
+    ; New layered mode: ROM bank 0002 = independently drawn GIMP panel.
+    ; Track background first, then cab-without-panel (0001), then pult (0002).
+    MOV A,#02
+    CALL gfx_probe_screen
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    ST $001A,A
+    CMP A,#01
+    JNZ .legacy_cab
+
+    ; The dedicated panel uses the common 256-color VGA DAC palette.
+    MOV A,#02
+    ST $0019,A
+    CALL gfx_apply_palette
+    MOV A,#00
+    CALL fill_view
+    MOV A,#00
+    CALL fill_panel
+    JMP .cab_ready
+
+.legacy_cab:
+    ; Backwards-compatible screenshot mode without separate panel.
     MOV A,#01
     CALL gfx_show_screen
     MOV BR-HI,#10
     MOV BR-LO,#00
     ST $0019,A
 
+.cab_ready:
     ; Draw the static panel only when no packed bitmap exists.
     CALL draw_panel_static
     CALL update_scene
@@ -392,8 +412,8 @@ update_scene:
     ; PIMG Ezh3 photos must keep their cab framework. The classic
     ; full-width Ecs scene renderer would erase that framework.
     LD A,$0019
-    CMP A,#01
-    JZ .done
+    CMP A,#00
+    JNZ .done
 
     CMP B,#00
     JZ .draw_depo
@@ -742,8 +762,8 @@ draw_panel_static:
     MOV BR-HI,#10
     MOV BR-LO,#00
     LD A,$0019
-    CMP A,#01
-    JZ .already_drawn
+    CMP A,#00
+    JNZ .already_drawn
     MOV A,#07
     CALL fill_panel
     ; Ecs: pale steel, two-tier console, wood trim and panel edges.
@@ -1523,6 +1543,15 @@ draw_panel_static:
     RET
 
 draw_panel_dynamic:
+    ; Never paint the old white Ecs debug-style controls on the new Ezh3
+    ; artwork. Animated Ezh3 controls will be separate sprites later.
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$001A
+    CMP A,#01
+    JNZ .legacy
+    RET
+.legacy:
     ; The analog speed bar covers 0..80 km/h.
     MOV Y-HI,#B9
     MOV Y-LO,#AD
@@ -2476,8 +2505,16 @@ draw_motion:
     JZ .done
     ST $000E,A
 
-    ; In photographed Ezh3 mode, render INSIDE the cab windshield
-    ; rather than drawing the old 320x120 view over the entire BMP.
+    ; New, pixel-masked composition does not need hardcoded window
+    ; coordinates. Green/blue from cab and panel are transparent.
+    LD A,$001A
+    CMP A,#01
+    JNZ .check_photo
+    CALL draw_layered_frame
+    JMP .done
+
+.check_photo:
+    ; Old photo-only renderer retained for existing ROMs.
     LD A,$0019
     CMP A,#01
     JNZ .procedural
@@ -2512,6 +2549,46 @@ draw_motion:
     CALL moving_rails
     CALL moving_signal
 .done:
+    RET
+
+; ---------------------------------------------------------------------------
+; Compositing for Ezh3 graphical layers, with exact color-key masks:
+; 1. Metro tracks/stations/signal drawn into VGA by PPA-1 ASM.
+; 2. cab-without-panel PIMG bank 0001 (if present): skip green and blue.
+; 3. pult_ezh3 PIMG bank 0002: skip green and blue.
+; No alpha channel and NO hardcoded cab window rectangles needed.
+; Repeated only when the simulated track phase or station changes.
+; ---------------------------------------------------------------------------
+draw_layered_frame:
+    MOV BR-HI,#10
+    MOV BR-LO,#00
+    LD A,$0006
+    CMP A,#00
+    JZ .depo
+    CMP A,#02
+    JZ .centrum
+    CMP A,#03
+    JZ .luka
+    CALL draw_tunnel
+    JMP .moving
+.depo:
+    CALL draw_station_depo
+    JMP .moving
+.centrum:
+    CALL draw_station_centrum
+    JMP .moving
+.luka:
+    CALL draw_station_luka
+.moving:
+    CALL moving_sleepers
+    CALL moving_rails
+    CALL moving_signal
+    ; Layer cab 0001 is optional until the user supplies cab.bmp.
+    MOV A,#01
+    CALL gfx_blit_transparent_screen
+    ; The pult always appears in the foreground and covers the blue gap.
+    MOV A,#02
+    CALL gfx_blit_transparent_screen
     RET
 
 ; ---------------------------------------------------------------------------
