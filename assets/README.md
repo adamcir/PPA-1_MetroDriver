@@ -1,61 +1,62 @@
-# Optional bitmap resource
+# Ež3 layered textures for PPA-1 MetroDriver
 
-Use your Ež3 driver's cab screenshot exported from **GIMP**:
+The user-supplied cabin and panel are **separate graphics layers**. Their
+original authoring format is a 320×200 BMP with color-key masking.
 
-1. Resize or crop to **320 × 200** pixels.
-2. Choose **File → Export As…** and use a `.bmp` extension.
-3. Export as **uncompressed BMP** (8-bit indexed, 24-bit RGB or 32-bit
-   uncompressed color; do not select RLE/bitfields compression).
-4. Save as `assets/cab_ezh3.bmp` in this repository, then run `make`.
-   The older `cab_ecs.bmp` filename also works as a fallback.
+| Source | Packed into | Purpose |
+|---|---|---|
+| `cab_ezh3_layer.bmp` | ROM bank `0001` | Cab walls/frames without the panel |
+| `pult_ezh3.bmp` | ROM bank `0002` | Independent metal/wood dashboard |
 
-The C ROM packer converts BMP pixels into a shared 256-color PPA-VGA
-palette (the first 16 colors retain EGA colors, and 16–255 use an RGB
-6 × 8 × 5 color cube). The BMP itself is **not** copied to the EEPROM:
-`PIMG` resources in ROM bank `0001` contain a compact header,
-768-byte RGB palette and top-to-bottom 8-bit pixel array.
+Both new drawings are already bundled into this repository as compressed,
+SHA-256-checked text archives. `make` restores them to
+`out/assets/cab_ezh3_layer.bmp` and `out/assets/pult_ezh3.bmp`.
 
-The first image can occupy at most 65024 bytes in its bank:
-1024 bytes of header/palette/padding + 320 × 200 pixels.
-The assembler creates `out/main.prg` (64 KiB program bank), then
-ROMPACK combines it with optional assets and writes the complete
-`out/main.bin` (2 MiB EEPROM image). ROMPACK always runs, even without BMP.
+- `cab_ezh3_layer.bmp.xz.b64` is a palette-quantized 8-bit copy of the
+  user's uploaded cabin: same PPA-1 output colors and mask shape.
+- `pult_ezh3.bmp.gz.b64` is the original uploaded 24-bit BMP, preserved
+  without any change.
 
-No bitmap file is required: without a cab BMP, the program still renders
-the original Ečs-style panel in PPA-1 ASM.
+You can override either archive by placing your new uncompressed GIMP
+export directly at `assets/cab_ezh3_layer.bmp` or
+`assets/pult_ezh3.bmp`; the build prioritizes these source BMPs.
 
-### Replacing gm_construct with live rails
+## Color-key masks
 
-Your original Ež3 screenshot includes gm_construct through the windshields.
-Do not paint pre-rendered rails onto the cab texture: the game now draws
-the tunnel, moving sleepers and rail outlines **in front of those pixels**
-using VGA from PPA-1 ASM. The rest of the screenshot, including the
-dashboard and window frames, is left visible.
+**Exact RGB values** are important:
 
-For the supplied 320×200 screenshot, the current ASM covers:
+- `#00FF00` green: window/opening, where the moving metro track appears.
+- `#0000FF` blue: the space reserved for the dashboard (also transparent
+  in the graphics compositor).
+- All other colors are drawn normally.
 
-- front window: x=112..207, y=0..105;
-- left window: x=0..57, y=0..69;
-- right window: x=275..319, y=12..102.
+ROMPACK converts these to VGA palette indices `FFh` (green) and `FEh`
+(blue); it excludes those two indices from opaque quantized colors.
+The PPA-1 ASM compositor skips both keys. No BMP alpha channel is needed.
 
-Only the front window currently receives animated rails; side windows show
-dark tunnel. If you crop/scale the screenshot differently in GIMP, adjust
-the rectangle origins/sizes inside `draw_ezh3_window` in `main.asm`.
-If any pixels of gm_construct remain visible beside an opening, expand
-its window rectangle slightly without covering the silver window frame.
+Render order: **ASM tunnel/rails/stations -> cab -> dashboard**.
 
-The original `railroad_001.png` in the GMod texture atlas is not a
-ready-made front-facing tunnel view and is not yet projected in-game.
+Use solid colors for the masks. Avoid soft edges, blur and antialiasing into
+the mask color, otherwise you can get green/blue fringe pixels.
 
-For additional resources or arbitrary binary blobs, use:
+## GIMP export
 
-```sh
-make rompack
-out/tools/ppa_rompack out/main.prg out/resources.bin \
-  --bmp 0001:assets/cab_ezh3.bmp \
-  --put 0002:0100:/path/to/custom.dat --info
-```
+1. Set canvas to **320×200** pixels.
+2. Export BMP (8-bit indexed, uncompressed 24-bit RGB, or uncompressed 32-bit).
+3. Disable RLE compression and BITFIELDS modes.
+4. Place the files in `assets/` with the names above.
+5. Run `make clean && make` (or simply `make`).
 
-BANK and OFFSET are **hexadecimal**. Bank `0000` is protected because
-the running program occupies it. An inserted file must fit within its
-chosen 64 KiB bank; the tool refuses overlaps.
+The final `out/main.bin` is a 2 MiB EEPROM image; the intermediate
+`out/main.prg` is a 64 KiB program, not a full EEPROM.
+If the BMP sources are absent, the bundled checked archives supply them.
+
+## Legacy screenshot
+
+The original `assets/cab_ezh3.bmp` is kept as a reference image.
+It is used only in legacy mode if there is no independent cab/panel
+texture. The new masked layers take priority.
+
+Currently the game draws its moving metro environment with PPA-1 ASM
+primitives. The textures for tunnels, curved tracks and instruments can
+be added independently in future versions.
