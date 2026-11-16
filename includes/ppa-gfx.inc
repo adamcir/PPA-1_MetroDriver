@@ -21,7 +21,7 @@
 ;                    Width 1..255, height 1..200 (PIMG header),
 ;                    *no clipping*: caller must keep sprite on screen.
 ;                    Does not change DAC; all assets use shared palette.
-;   gfx_copy_screen: A = ROM bank, copy 64000 pixel bytes (no validation).
+;   gfx_copy_screen: A = ROM bank, copy 64000 pixel bytes (no validation).\n;   gfx_probe_screen: A = bank, return 1 if valid 320x200 PIMG.\n;   gfx_blit_transparent_screen: A = bank, overlay non-mask pixels,\n;                    skips blue FEh and green FFh. Does not change DAC.
 ;
 ; RAM 1000:0030..0036 reserved while graphics functions run.
 ; No host-side BMP decoding: the converter runs BEFORE the emulator.
@@ -89,6 +89,91 @@ gfx_show_screen:
     MOV A,#01
     RET
 .invalid:
+    MOV A,#00
+    RET
+
+; Test a full-screen PIMG without touching the framebuffer or DAC.
+; Input A = ROM bank, output A = 1/0, D = requested bank.
+gfx_probe_screen:
+    MOV D,A
+    MOV BR-HI,#00
+    MOV BR-LO,D
+    LD A,$0000
+    CMP A,#50
+    JNZ .invalid
+    LD A,$0001
+    CMP A,#49
+    JNZ .invalid
+    LD A,$0002
+    CMP A,#4D
+    JNZ .invalid
+    LD A,$0003
+    CMP A,#47
+    JNZ .invalid
+    LD A,$0004
+    CMP A,#01
+    JNZ .invalid
+    LD A,$0005
+    CMP A,#01
+    JNZ .invalid
+    LD A,$0006
+    CMP A,#40
+    JNZ .invalid
+    LD A,$0007
+    CMP A,#01
+    JNZ .invalid
+    LD A,$0008
+    CMP A,#C8
+    JNZ .invalid
+    LD A,$0009
+    CMP A,#00
+    JNZ .invalid
+    MOV A,#01
+    RET
+.invalid:
+    MOV A,#00
+    RET
+
+; Overlay a complete 320x200 PIMG without damaging the background.
+; PIMG palette index FEh (blue) / FFh (green) = transparent.
+; Intended order: render train route -> cab (bank 1) -> panel (bank 2).
+; Input A = ROM bank, returns A=1 if found, 0 otherwise.
+gfx_blit_transparent_screen:
+    MOV D,A
+    CALL gfx_probe_screen
+    CMP A,#01
+    JNZ .missing
+    MOV X-HI,#04
+    MOV X-LO,#00
+    MOV Y-HI,#00
+    MOV Y-LO,#00
+.pixel:
+    MOV BR-HI,#00
+    MOV BR-LO,D
+    LD B,X
+    CMP B,#FE
+    JZ .skip
+    CMP B,#FF
+    JZ .skip
+    MOV BR-HI,#20
+    MOV BR-LO,#01
+    ST Y,B
+.skip:
+    INC X-LO
+    JNZ .src_ok
+    INC X-HI
+.src_ok:
+    INC Y-LO
+    JNZ .dst_ok
+    INC Y-HI
+.dst_ok:
+    CMP Y-HI,#FA
+    JNZ .pixel
+    CMP Y-LO,#00
+    JNZ .pixel
+    MOV A,#01
+    RET
+.missing:
     MOV A,#00
     RET
 
