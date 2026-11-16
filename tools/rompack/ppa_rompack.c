@@ -7,7 +7,7 @@
  * Output: a complete 2 MiB EEPROM image with ROM bank 0000 for code,
  *         optional files and BMPs in ROM banks 0001..001F.
  * BMP: uncompressed Windows BMP, indexed 8-bit, BGR 24-bit or BGRA 32-bit.
- * All images share one fixed 256-color VGA palette: 16 EGA + RGB 6x8x5.
+ * All images share a fixed VGA palette: 16 EGA + RGB 6x8x5,\n * with indices 254/255 reserved for exact blue/green color keys.
  *
  * PIMG v1 per-bank layout, 16-bit little endian values:
  * 0000..0003  "PIMG"
@@ -104,11 +104,21 @@ static void place(unsigned bank, unsigned off, const uint8_t *data,
     memcpy(rom + at, data, n);
     memset(occupied + at, 1, n);
 }
+/*
+ * Layer mask colors (EXACT RGB matches, no fuzzy matching):
+ *  #00FF00 -> index 255 = track/background opening
+ *  #0000FF -> index 254 = gap reserved for an independently drawn panel
+ * Both indices are skipped by the layered VGA blitter.
+ */
 static unsigned quantize(uint8_t r, uint8_t g, uint8_t b) {
+    if (r == 0 && g == 255 && b == 0) return 255u;
+    if (r == 0 && g == 0 && b == 255) return 254u;
     unsigned rr = ((unsigned)r * 5u + 127u) / 255u;
     unsigned gg = ((unsigned)g * 7u + 127u) / 255u;
     unsigned bb = ((unsigned)b * 4u + 127u) / 255u;
-    return 16u + rr * 40u + gg * 5u + bb;
+    unsigned index = 16u + rr * 40u + gg * 5u + bb;
+    /* Index 254/255 must never be used by normal opaque colors. */
+    return index >= 254u ? 253u : index;
 }
 static void make_palette(uint8_t *dst) {
     static const uint8_t ega[16][3] = {
@@ -126,6 +136,9 @@ static void make_palette(uint8_t *dst) {
                 dst[3u * idx + 1] = (uint8_t)(g * 255u / 7u);
                 dst[3u * idx + 2] = (uint8_t)(b * 255u / 4u);
             }
+    /* Reserve two palette entries for the layer mask keys. */
+    dst[3u * 254u] = 0; dst[3u * 254u + 1] = 0; dst[3u * 254u + 2] = 255;
+    dst[3u * 255u] = 0; dst[3u * 255u + 1] = 255; dst[3u * 255u + 2] = 0;
 }
 static void install_bmp(unsigned bank, const char *path) {
     size_t file_size;
