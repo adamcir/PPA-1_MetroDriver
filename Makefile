@@ -15,7 +15,9 @@ ROM_IMAGE := out/main.bin
 PANEL_SOURCE := $(firstword $(wildcard assets/pult_ezh3.bmp))
 PANEL_ARCHIVE := $(firstword $(wildcard assets/pult_ezh3.bmp.gz.b64))
 PANEL_BMP := $(if $(PANEL_SOURCE),$(PANEL_SOURCE),$(if $(PANEL_ARCHIVE),out/assets/pult_ezh3.bmp))
-LAYER_CAB_BMP := $(firstword $(wildcard assets/cab_ezh3_layer.bmp) $(wildcard assets/cab.bmp))
+LAYER_CAB_SOURCE := $(firstword $(wildcard assets/cab_ezh3_layer.bmp) $(wildcard assets/cab.bmp))
+LAYER_CAB_ARCHIVE := $(firstword $(wildcard assets/cab_ezh3_layer.bmp.xz.b64))
+LAYER_CAB_BMP := $(if $(LAYER_CAB_SOURCE),$(LAYER_CAB_SOURCE),$(if $(LAYER_CAB_ARCHIVE),out/assets/cab_ezh3_layer.bmp))
 LEGACY_CAB_BMP := $(firstword $(wildcard assets/cab_ezh3.bmp) $(wildcard assets/cab_ecs.bmp))
 CAB_BMP := $(if $(PANEL_BMP),$(LAYER_CAB_BMP),$(if $(LAYER_CAB_BMP),$(LAYER_CAB_BMP),$(LEGACY_CAB_BMP)))
 INCLUDES := $(wildcard includes/*.inc)
@@ -43,10 +45,14 @@ out/assets/pult_ezh3.bmp: assets/pult_ezh3.bmp.gz.b64 tools/assets/restore_bmp.p
 	mkdir -p $(dir $@)
 	python3 tools/assets/restore_bmp.py $< $@
 
+out/assets/cab_ezh3_layer.bmp: assets/cab_ezh3_layer.bmp.xz.b64 tools/assets/restore_bmp.py
+	mkdir -p $(dir $@)
+	python3 tools/assets/restore_bmp.py $< $@
+
 # Stage 2: program + optional cab/panel -> complete 2 MiB EEPROM image.
 # With an independently drawn panel, do not bundle the legacy photographed
 # cab (it already contains its own panel and would cause visual overlap).
-$(ROM_IMAGE): $(ROM_PROGRAM) $(ROMPACK_BIN) $(if $(PANEL_SOURCE),,$(if $(PANEL_ARCHIVE),out/assets/pult_ezh3.bmp)) FORCE
+$(ROM_IMAGE): $(ROM_PROGRAM) $(ROMPACK_BIN) $(if $(PANEL_SOURCE),,$(if $(PANEL_ARCHIVE),out/assets/pult_ezh3.bmp)) $(if $(LAYER_CAB_SOURCE),,$(if $(LAYER_CAB_ARCHIVE),out/assets/cab_ezh3_layer.bmp)) FORCE
 	mkdir -p $(dir $@)
 	$(ROMPACK_BIN) $(ROM_PROGRAM) $@ $(if $(CAB_BMP),--bmp 0001:$(CAB_BMP)) $(if $(PANEL_BMP),--bmp 0002:$(PANEL_BMP))
 
