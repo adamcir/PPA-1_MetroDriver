@@ -10,25 +10,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build ASM game and C ROM packer
+
+      - name: Build ASM, restore uploaded Ezh3 assets and pack ROM
         run: make
-      - name: Verify intermediate program and final ROM
+
+      - name: Verify layered ROM layout, program and color keys
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import struct
           program=Path("out/main.prg").read_bytes()
           rom=Path("out/main.bin").read_bytes()
           assert len(program)==65536
           assert len(rom)==2*1024*1024
           assert rom[:65536]==program
-          assert rom[65536:65540]==b"PIMG"
-          print("ASM -> program.prg -> ROMPACK -> ROM with uploaded Ezh3 BMP: OK")
+          for bank in (1,2):
+              img=rom[bank*65536:(bank+1)*65536]
+              assert img[:4]==b"PIMG"
+              assert struct.unpack_from("<HH",img,6)==(320,200)
+              assert struct.unpack_from("<H",img,12)[0]==0x400
+          cab=rom[65536+0x400:65536+0x400+64000]
+          pult=rom[131072+0x400:131072+0x400+64000]
+          assert cab.count(254)>1000 and cab.count(255)>1000
+          assert pult.count(255)>1000
+          print("PPA-1 ROM: code bank 0000, masked cab bank 0001, panel bank 0002: OK")
           PY
-      - name: Test BMP and raw-ROM packing
+
+      - name: Test stand-alone ROM packer
         run: make test-rompack
-      - name: Build without optional BMP
+
+      - name: Verify build without optional art
         run: |
-          mv assets/cab_ezh3.bmp /tmp/ci-cab-ezh3.bmp
+          mv assets/cab_ezh3.bmp /tmp/ci-legacy-cab.bmp
+          mv assets/cab_ezh3_layer.bmp.xz.b64 /tmp/ci-cab-mask.b64
+          mv assets/pult_ezh3.bmp.gz.b64 /tmp/ci-pult.b64
           make
           python3 - <<'PY'
           from pathlib import Path
@@ -37,31 +52,40 @@ jobs:
           assert len(rom)==2*1024*1024
           assert rom[:65536]==program
           assert set(rom[65536:])=={255}
-          print("No assets: ROMPACK generated a clean final ROM")
+          print("Empty asset fallback: OK")
           PY
-      - name: Build with test BMP
+
+      - name: Verify new GIMP BMPs override bundled assets and preserve masks
         run: |
           python3 - <<'PY'
           import struct
           from pathlib import Path
-          w,h=320,200
-          stride=((w*3+3)//4)*4
-          rows=bytearray()
-          for y in range(h):
-              row=bytearray()
-              for x in range(w):
-                  row.extend(((x+y)%256, y%256, x%256))
-              row.extend(bytes(stride-w*3))
-              rows.extend(row)
-          header=struct.pack("<2sIHHIIiiHHIIiiII", b"BM",54+len(rows),0,0,54,40,w,h,1,24,0,len(rows),2835,2835,0,0)
-          Path("assets/cab_ecs.bmp").write_bytes(header+rows)
+
+          def bmp(path, pixels):
+              w,h=320,200
+              stride=w*3
+              rows=bytearray()
+              for y in reversed(range(h)):
+                  for x in range(w):
+                      r,g,b=pixels(x,y)
+                      rows.extend((b,g,r))
+              head=struct.pack("<2sIHHIIiiHHIIiiII",
+                  b"BM",54+len(rows),0,0,54,40,w,h,1,24,0,len(rows),2835,2835,0,0)
+              Path(path).write_bytes(head+rows)
+
+          bmp("assets/cab_ezh3_layer.bmp", lambda x,y:
+              (0,255,0) if x<160 else ((0,0,255) if y>=100 else (166,164,157)))
+          bmp("assets/pult_ezh3.bmp", lambda x,y:
+              (0,255,0) if y<100 else (166,164,157))
           PY
           make
           python3 - <<'PY'
           from pathlib import Path
-          d=Path("out/main.bin").read_bytes()
-          assert len(d)==2*1024*1024
-          assert d[:65536]==Path("out/main.prg").read_bytes()
-          assert d[65536:65540]==b"PIMG"
-          print("Bitmap resource was packed into bank 0001")
+          rom=Path("out/main.bin").read_bytes()
+          cab=rom[65536+0x400:65536+0x400+64000]
+          panel=rom[131072+0x400:131072+0x400+64000]
+          assert cab[0]==255 and cab[100*320+200]==254
+          assert cab[50*320+200] not in (254,255)
+          assert panel[0]==255 and panel[199*320+160] not in (254,255)
+          print("Direct GIMP BMP overrides and both color keys: OK")
           PY
